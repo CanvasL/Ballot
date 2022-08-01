@@ -1,3 +1,6 @@
+mod test;
+
+use near_sdk::__private::BorshIntoStorageKey;
 /*
  * smart contract `Ballot` written in RUST
  *
@@ -7,8 +10,15 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{UnorderedMap, Vector};
 use near_sdk::{env, log, near_bindgen, AccountId};
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[derive(BorshSerialize)]
+enum StorageKey {
+    VoterTag,
+    ProposalsTag,
+}
+impl BorshIntoStorageKey for StorageKey {}
+
+// #[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize, PartialEq, Debug)]
 pub struct Voter {
     weight: u64,                 // weight is accumulated by delegation
     voted: bool,                 // if true, that person already voted
@@ -16,15 +26,15 @@ pub struct Voter {
     vote: Option<u64>,           // index of the voted proposal
 }
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+// #[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]
 pub struct Proposal {
-    name: String,       // proposal name
-    vote_count: u64,    // number of accumulated votes
+    name: String,    // proposal name
+    vote_count: u64, // number of accumulated votes
 }
 
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct Contract {
     pub chair_person: AccountId,
     pub voters: UnorderedMap<AccountId, Voter>,
@@ -36,8 +46,8 @@ pub struct Contract {
 impl Contract {
     #[init]
     #[private]
-    pub fn new(#[serializer(borsh)] proposal_names: Vector<String>) -> Self {
-        assert!(env::state_exists(), "Already initialized");
+    pub fn new(proposal_names: &[&'static str]) -> Self {
+        assert!(!env::state_exists(), "Already initialized");
 
         let chair_person = env::predecessor_account_id();
 
@@ -47,13 +57,13 @@ impl Contract {
             delegate: None,
             vote: None,
         };
-        let mut voters: UnorderedMap<AccountId, Voter> = UnorderedMap::new(b"m");
+        let mut voters: UnorderedMap<AccountId, Voter> = UnorderedMap::new(StorageKey::VoterTag);
         voters.insert(&chair_person, &voter);
 
-        let mut proposals: Vector<Proposal> = Vector::new(b"m");
+        let mut proposals: Vector<Proposal> = Vector::new(StorageKey::ProposalsTag);
         for proposal_name in proposal_names.iter() {
             proposals.push(&Proposal {
-                name: proposal_name,
+                name: proposal_name.to_string(),
                 vote_count: 0,
             })
         }
@@ -68,72 +78,102 @@ impl Contract {
     // Give `voter` the right to vote on this ballot.
     // May only be called by `chairperson`.
     #[payable]
-    pub fn give_right_to_vote(&mut self, voter: AccountId) {
+    pub fn give_right_to_vote(&mut self, voter: &AccountId) {
         assert!(
-            self.chair_person != env::predecessor_account_id(),
+            self.chair_person == env::predecessor_account_id(),
             "Only chairperson can give right to vote."
         );
-        assert!(
-            self.voters.get(&voter).unwrap().voted,
-            "The voter already voted."
-        );
-        assert!(
-            self.voters.get(&voter).unwrap().weight == 0,
-            "The voter's weight has been setted."
-        );
 
-        self.voters.get(&voter).unwrap().weight = 1;
+        if let Some(val) = self.voters.get(voter) {
+            assert!(!val.voted, "The voter already voted.");
+            self.voters.get(voter).unwrap().weight = 1;
+        } else {
+            self.voters.insert(
+                voter,
+                &Voter {
+                    weight: 1,
+                    voted: false,
+                    delegate: None,
+                    vote: None,
+                },
+            );
+        }
+        // assert!(
+        //     // self.voters.get(&voter).unwrap().voted,
+        //     if let Some(val) = self.voters.get(voter) {
+        //         if val.voted {
+        //             false
+        //         } else {
+        //             true
+        //         }
+        //     } else {
+        //         true
+        //     },
+        //     "The voter already voted."
+        // );
+        // assert!(
+        //     self.voters.get(&voter).unwrap().weight == 0,
+        //     "The voter's weight has been setted."
+        // );
 
-        assert!(
-            self.voters.get(&voter).unwrap().weight == 1,
-            "Error setting weight."
-        )
+        // self.voters.insert(
+        //     &voter,
+        //     &Voter {
+        //         weight: 1,
+        //         voted: false,
+        //         delegate: None,
+        //         vote: None,
+        //     },
+        // );
+        // self.voters.get(&voter).unwrap().weight = 1;
     }
 
     // Delegate your vote to the voter `to`.
     #[payable]
     pub fn delegate(&mut self, _to: AccountId) {
-        let mut to = _to;
+        let to = Box::new(_to);
         let sender_voter: Voter = self.voters.get(&env::predecessor_account_id()).unwrap();
 
         assert!(sender_voter.weight != 0, "You have no right to vote.");
         assert!(!sender_voter.voted, "You have already voted.");
         assert!(
-            to != env::predecessor_account_id(),
+            *to != env::predecessor_account_id(),
             "Self-delefation is disallowed."
         );
 
-        if let Some(account) = self.voters.get(&to).unwrap().delegate {
-            to = account;
+        if let Some(delegate_voter) = self.voters.get(&to) {
             assert!(
-                to != env::predecessor_account_id(),
-                "Found loop in delegation."
+                delegate_voter.weight != 0,
+                "Voters cannot delegate to accounts that cannot vote."
             );
-        }
 
-        let delegate_ = self.voters.get(&to).unwrap();
+            if let Some(account) = delegate_voter.delegate {
+                assert!(
+                    account != env::predecessor_account_id(),
+                    "Found loop in delegation."
+                );
+            }
 
-        assert!(
-            delegate_.weight != 0,
-            "Voters cannot delegate to accounts that cannot vote."
-        );
+            let mut temp_voter = self.voters.get(&env::predecessor_account_id()).unwrap();
+            temp_voter.voted = true;
+            temp_voter.delegate = Some(*to.clone());
+            self.voters
+                .insert(&env::predecessor_account_id(), &temp_voter);
 
-        self.voters
-            .get(&env::predecessor_account_id())
-            .unwrap()
-            .voted = true;
-        self.voters
-            .get(&env::predecessor_account_id())
-            .unwrap()
-            .delegate = Some(to);
+            if delegate_voter.voted {
+                let mut temp_proposal = self.proposals.get(delegate_voter.vote.unwrap()).unwrap();
+                temp_proposal.vote_count += sender_voter.weight;
 
-        if delegate_.voted {
-            self.proposals
-                .get(delegate_.vote.unwrap())
-                .unwrap()
-                .vote_count += sender_voter.weight;
+                self.proposals
+                    .replace(delegate_voter.vote.unwrap(), &temp_proposal);
+            } else {
+                let mut temp_voter = self.voters.get(&to).unwrap();
+                temp_voter.weight += sender_voter.weight;
+
+                self.voters.insert(&to, &temp_voter);
+            }
         } else {
-            self.voters.get(&to).unwrap().weight += sender_voter.weight;
+            panic!("delegate account has no right to vote.")
         }
     }
 
@@ -145,16 +185,14 @@ impl Contract {
         assert!(sender_voter.weight != 0, "You have no right to vote.");
         assert!(!sender_voter.voted, "You have already voted.");
 
-        self.voters
-            .get(&env::predecessor_account_id())
-            .unwrap()
-            .voted = true;
-        self.voters
-            .get(&env::predecessor_account_id())
-            .unwrap()
-            .vote = Some(proposals_index);
+        let mut temp_voter = self.voters.get(&env::predecessor_account_id()).unwrap();
+        temp_voter.voted = true;
+        temp_voter.vote = Some(proposals_index);
+        let mut temp_proposal = self.proposals.get(proposals_index).unwrap();
+        temp_proposal.vote_count += sender_voter.weight;
 
-        self.proposals.get(proposals_index).unwrap().vote_count = sender_voter.weight
+        self.voters.insert(&env::predecessor_account_id(), &temp_voter);
+        self.proposals.replace(proposals_index, &temp_proposal);
     }
 
     // Calls winningProposal() function to get the index
