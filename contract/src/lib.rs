@@ -1,15 +1,16 @@
-#[cfg(test)]
-mod test;
-
-use near_sdk::__private::BorshIntoStorageKey;
 /*
  * smart contract `Ballot` written in RUST
  *
  *
  */
+
+use near_sdk::__private::BorshIntoStorageKey;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{UnorderedMap, Vector};
 use near_sdk::{env, log, near_bindgen, AccountId};
+
+#[cfg(test)]
+mod test;
 
 #[derive(BorshSerialize)]
 enum StorageKey {
@@ -18,7 +19,6 @@ enum StorageKey {
 }
 impl BorshIntoStorageKey for StorageKey {}
 
-// #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PartialEq, Debug)]
 pub struct Voter {
     weight: u64,                 // weight is accumulated by delegation
@@ -27,7 +27,6 @@ pub struct Voter {
     vote: Option<u64>,           // index of the voted proposal
 }
 
-// #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]
 pub struct Proposal {
     name: String,    // proposal name
@@ -47,7 +46,7 @@ impl Default for Contract {
         Self {
             chair_person: AccountId::new_unchecked("test.near".to_string()),
             voters: UnorderedMap::new(StorageKey::VoterTag),
-            proposals: Vector::new(StorageKey::ProposalsTag)
+            proposals: Vector::new(StorageKey::ProposalsTag),
         }
     }
 }
@@ -57,7 +56,7 @@ impl Default for Contract {
 impl Contract {
     #[init]
     #[private]
-    pub fn new(proposal_names: &[&'static str]) -> Self {
+    pub fn new(proposal_names: Vec<String>) -> Self {
         assert!(!env::state_exists(), "Already initialized");
 
         let chair_person = env::predecessor_account_id();
@@ -79,7 +78,7 @@ impl Contract {
             })
         }
 
-        log!("Contract Ballot initialized.");
+        log!("Contract Ballot initialized");
 
         Self {
             chair_person,
@@ -158,6 +157,11 @@ impl Contract {
 
                 self.voters.insert(&to, &temp_voter);
             }
+            log!(
+                "{} delegates the vote to {}",
+                env::predecessor_account_id(),
+                *to
+            );
         } else {
             panic!("delegate account has no right to vote.")
         }
@@ -177,10 +181,15 @@ impl Contract {
         let mut temp_proposal = self.proposals.get(proposals_index).unwrap();
         temp_proposal.vote_count += sender_voter.weight;
 
-        self.voters.insert(&env::predecessor_account_id(), &temp_voter);
+        self.voters
+            .insert(&env::predecessor_account_id(), &temp_voter);
         self.proposals.replace(proposals_index, &temp_proposal);
 
-        log!("{} vote to proposal {}", env::predecessor_account_id(), proposals_index)
+        log!(
+            "{} vote to proposal {}",
+            env::predecessor_account_id(),
+            proposals_index
+        )
     }
 
     // Calls winningProposal() function to get the index

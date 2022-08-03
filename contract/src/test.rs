@@ -5,8 +5,8 @@ use super::*;
 #[test]
 fn init_contract() {
     let msg_sender = env::predecessor_account_id();
-    let proposal_names = ["Eduction", "Industry", "Finance"];
-    let contract = Contract::new(&proposal_names);
+    let proposal_names = vec!["Eduction".to_string(), "Industry".to_string(), "Finance".to_string()];
+    let contract = Contract::new(proposal_names.clone());
 
     assert_eq!(contract.chair_person, msg_sender);
     assert_eq!(
@@ -33,8 +33,8 @@ fn init_contract() {
 fn give_right_to_vote() {
     // let msg_sender = env::predecessor_account_id();
     let voter_id = AccountId::new_unchecked("alice.near".to_string());
-    let proposal_names = ["Eduction", "Industry", "Finance"];
-    let mut contract = Contract::new(&proposal_names);
+    let proposal_names = vec!["Eduction".to_string(), "Industry".to_string(), "Finance".to_string()];
+    let mut contract = Contract::new(proposal_names);
 
     contract.give_right_to_vote(&voter_id);
     assert_eq!(
@@ -52,8 +52,8 @@ fn give_right_to_vote() {
 fn delegate() {
     let msg_sender = env::predecessor_account_id();
     let delegate_id = Box::new(AccountId::new_unchecked("alice.near".to_string()));
-    let proposal_names = ["Eduction", "Industry", "Finance"];
-    let mut contract = Contract::new(&proposal_names);
+    let proposal_names = vec!["Eduction".to_string(), "Industry".to_string(), "Finance".to_string()];
+    let mut contract = Contract::new(proposal_names);
 
     contract.give_right_to_vote(&delegate_id);
     contract.delegate(*delegate_id.clone());
@@ -67,8 +67,8 @@ fn delegate() {
 #[test]
 fn vote() {
     let msg_sender = env::predecessor_account_id();
-    let proposal_names = ["Eduction", "Industry", "Finance"];
-    let mut contract = Contract::new(&proposal_names);
+    let proposal_names = vec!["Eduction".to_string(), "Industry".to_string(), "Finance".to_string()];
+    let mut contract = Contract::new(proposal_names);
 
     let vote_index = 2;
     let pre_vote_count = contract.proposals.get(vote_index).unwrap().vote_count;
@@ -87,8 +87,8 @@ fn vote() {
 
 #[test]
 fn winner_name() {
-    let proposal_names = ["Eduction", "Industry", "Finance"];
-    let mut contract = Contract::new(&proposal_names);
+    let proposal_names = vec!["Eduction".to_string(), "Industry".to_string(), "Finance".to_string()];
+    let mut contract = Contract::new(proposal_names);
 
     let vote_index = 2;
     contract.vote(vote_index);
