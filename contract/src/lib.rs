@@ -1,3 +1,4 @@
+#[cfg(test)]
 mod test;
 
 use near_sdk::__private::BorshIntoStorageKey;
@@ -41,6 +42,16 @@ pub struct Contract {
     pub proposals: Vector<Proposal>,
 }
 
+impl Default for Contract {
+    fn default() -> Self {
+        Self {
+            chair_person: AccountId::new_unchecked("test.near".to_string()),
+            voters: UnorderedMap::new(StorageKey::VoterTag),
+            proposals: Vector::new(StorageKey::ProposalsTag)
+        }
+    }
+}
+
 // Implement the contract structure
 #[near_bindgen]
 impl Contract {
@@ -67,6 +78,8 @@ impl Contract {
                 vote_count: 0,
             })
         }
+
+        log!("Contract Ballot initialized.");
 
         Self {
             chair_person,
@@ -98,34 +111,7 @@ impl Contract {
                 },
             );
         }
-        // assert!(
-        //     // self.voters.get(&voter).unwrap().voted,
-        //     if let Some(val) = self.voters.get(voter) {
-        //         if val.voted {
-        //             false
-        //         } else {
-        //             true
-        //         }
-        //     } else {
-        //         true
-        //     },
-        //     "The voter already voted."
-        // );
-        // assert!(
-        //     self.voters.get(&voter).unwrap().weight == 0,
-        //     "The voter's weight has been setted."
-        // );
-
-        // self.voters.insert(
-        //     &voter,
-        //     &Voter {
-        //         weight: 1,
-        //         voted: false,
-        //         delegate: None,
-        //         vote: None,
-        //     },
-        // );
-        // self.voters.get(&voter).unwrap().weight = 1;
+        log!("Chair person have give right to Voter {}", voter);
     }
 
     // Delegate your vote to the voter `to`.
@@ -193,6 +179,8 @@ impl Contract {
 
         self.voters.insert(&env::predecessor_account_id(), &temp_voter);
         self.proposals.replace(proposals_index, &temp_proposal);
+
+        log!("{} vote to proposal {}", env::predecessor_account_id(), proposals_index)
     }
 
     // Calls winningProposal() function to get the index
